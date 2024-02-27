@@ -1,6 +1,6 @@
 # Prediction of the US real estate prices with gradient boosting models
 
-Data: weekly data for US statistical areas by [https://haus.com/resources/the-common-haus-price-index](HAUS) from 2010 to 2023 cleared from artefacts in the older years
+Data: weekly data for US statistical areas by [HAUS](https://haus.com/resources/the-common-haus-price-index) from 2010 to 2023 cleared from artefacts in the older years
 * Train - 70%
 * Validation - 15%
 * Test - 15%
