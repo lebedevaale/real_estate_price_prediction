@@ -8,8 +8,97 @@ import xgboost as xgb
 import lightgbm as lgb
 import catboost as cat
 import statsmodels.api as sm
+import plotly.graph_objects as go
 from contextlib import contextmanager
+from plotly.subplots import make_subplots
 from sklearn.metrics import mean_squared_error as mse
+
+#---------------------------------------------------------------------------------------------------------------------------------------
+
+def variables_dynamics(data,
+                       groupby:str):
+
+    """
+    Function for the plotting of the dynamics for the variables
+
+    Inputs:
+    --------------------
+    data : pd.DataFrame
+        Dataframe with columns for the analysis
+    groupby : str
+        Column to groupby
+    mean_only : bool = False
+        Whether to plot only means and not min-max
+
+    Prints:
+    --------------------
+    Dynamics of the variables
+    """
+
+    # Creating grid of subplots
+    fig = make_subplots(rows = len(data.columns), cols = 1, subplot_titles = data.columns)
+
+    # Scattering returns
+    for i, col in enumerate(data.columns):
+        fig.add_trace(go.Scatter(x = data.index, y = data[col], mode = 'lines', name = col, row = i + 1, col = 1))
+
+    # Update layout
+    fig.update_layout(
+        showlegend = False,
+        template = 'plotly_dark',
+        font = dict(size = 20),
+        height = 300 * len(data.columns),
+        width = 1200
+    )
+
+    # Show the plot
+    fig.show()
+
+#---------------------------------------------------------------------------------------------------------------------------------------
+
+def heatmap(data):
+
+    """
+    Function for the plotting of the correlation heatmap
+
+    Inputs:
+    --------------------
+    data : pd.DataFrame
+        Dataframe with columns for the analysis
+    
+    Prints:
+    --------------------
+    Correlation heatmap
+    """
+
+    # Creating grid of subplots
+    fig = make_subplots(rows = 1, cols = 2, subplot_titles = ["Pearson Correlation", "Spearman Correlation"])
+
+    # Add trace for each correlation matrix
+    z1 = data.corr(method = 'pearson')
+    z2 = data.corr(method = 'spearman')
+    z = [z1, z2]
+    for i in range(len(z)):
+        fig.add_trace(go.Heatmap(z = z[i][::-1],
+                                 x = data.columns,
+                                 y = data.columns[::-1],
+                                 text = z[i][::-1].round(2),
+                                 texttemplate = "%{text}",
+                                 zmin = -1, zmax = 1), 
+                                 row = 1, col = i + 1)
+
+    # Update layout
+    fig.update_layout(
+        showlegend = False,
+        template = 'plotly_dark',
+        font = dict(size = 14),
+        height = 600,
+        width = 1600
+    )
+    fig.update_annotations(font_size = 30)
+
+    # Show the plot
+    fig.show()
 
 #---------------------------------------------------------------------------------------------------------------------------------------
 
