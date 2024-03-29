@@ -1,5 +1,6 @@
 import time
 import shap
+import nolds
 import optuna
 import operator
 import pandas as pd
@@ -11,12 +12,12 @@ import statsmodels.api as sm
 import plotly.graph_objects as go
 from contextlib import contextmanager
 from plotly.subplots import make_subplots
+from statsmodels.tsa.stattools import adfuller
 from sklearn.metrics import mean_squared_error as mse
 
 #---------------------------------------------------------------------------------------------------------------------------------------
 
-def variables_dynamics(data,
-                       groupby:str):
+def variables_dynamics(data):
 
     """
     Function for the plotting of the dynamics for the variables
@@ -40,7 +41,7 @@ def variables_dynamics(data,
 
     # Scattering returns
     for i, col in enumerate(data.columns):
-        fig.add_trace(go.Scatter(x = data.index, y = data[col], mode = 'lines', name = col, row = i + 1, col = 1))
+        fig.add_trace(go.Scatter(x = data.index, y = data[col], mode = 'lines', name = col), row = i + 1, col = 1)
 
     # Update layout
     fig.update_layout(
@@ -99,6 +100,31 @@ def heatmap(data):
 
     # Show the plot
     fig.show()
+
+#-------------------------------------------------------------------------------------------------------
+
+def stationarity(data):
+
+    '''
+    Function for the calculation of stationarity of time series
+
+    Inputs:
+    --------------------
+    data : pd.DataFrame
+        Dataframe with columns for the analysis
+
+    Prints:
+    --------------------
+    res : pd.DataFrame
+        Dataframe with results of the stationarity test
+    '''
+
+    res = pd.DataFrame(columns = ['Variable', 'DF statistics', 'DF p-value', 'Lyapunov LE', 'Hurst E'])
+    for col in data.columns:
+        stat = adfuller(data[col])
+        res.loc[len(res)] = [col, stat[0], stat[1], nolds.lyap_r(data[col]), nolds.hurst_rs(data[col])]
+    
+    return res
 
 #---------------------------------------------------------------------------------------------------------------------------------------
 
