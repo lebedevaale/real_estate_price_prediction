@@ -6,17 +6,23 @@ import operator
 import numpy as np
 import pandas as pd
 import sklearn as sk
+from PyEMD import EMD
 import xgboost as xgb
 import lightgbm as lgb
 import catboost as cat
-from pathlib import Path
+import plotly.io as pio
+from scipy.fft import fft
 import statsmodels.api as sm
+from tqdm.notebook import tqdm
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 from contextlib import contextmanager
 from plotly.subplots import make_subplots
 from statsmodels.tsa.stattools import adfuller
 from sklearn.metrics import mean_squared_error as mse
+from sklearn.feature_selection import mutual_info_regression
+
+pio.templates.default = "plotly_dark"
 
 # Receiving hyperparams for sample modifications
 from configparser import ConfigParser
@@ -583,3 +589,157 @@ def optuna_and_boosting(lag, random_state, directory:str = '',
     stack_test['stack'] = Y_test_pred
     stack_val.to_parquet(directory + f'Predictions/{lag}/gb_val.parquet')
     stack_test.to_parquet(directory + f'Predictions/{lag}/gb_test.parquet')
+
+#---------------------------------------------------------------------------------------------------------------------------------------
+
+def emd(signal, t, plot = False):
+    emd = EMD(DTYPE = np.float16, spline_kind = 'akima')
+    imfs = emd(signal.values)
+    N = imfs.shape[0]
+    
+    if plot:
+        # Creating grid of subplots
+        fig = make_subplots(rows = N + 1, cols = 1, subplot_titles = ['Original Signal'] + [f'IMF {i}' for i in range(N)])
+
+        # Scattering signal and IMFs
+        fig.add_trace(go.Scatter(x = t, y = signal, mode = 'lines', name = 'Original Signal'), row = 1, col = 1)
+        for i, imf in enumerate(imfs):
+            fig.add_trace(go.Scatter(x = t, y = imf, mode = 'lines', name = f'IMF {i}'), row = i + 2, col = 1)
+
+        # Update layout
+        fig.update_layout(
+            showlegend = False,
+            font = dict(size = 20),
+            height = 400 * (N + 1),
+            width = 2000
+        )
+        fig.show()
+
+    return imfs
+
+#---------------------------------------------------------------------------------------------------------------------------------------
+
+def phase_spectrum(imfs):
+    imfs_p = []
+    for imf in imfs:
+        trans = fft(imf)
+        imf_p = np.arctan(trans.imag / trans.real)
+        imfs_p.append(imf_p)
+
+    return imfs_p
+
+#---------------------------------------------------------------------------------------------------------------------------------------
+
+def phase_mi(phases):
+    mis = []
+    for i in range(len(phases) - 1):
+        mis.append(mutual_info_regression(phases[i].reshape(-1, 1), phases[i + 1])[0])
+        
+    return np.array(mis)
+
+#---------------------------------------------------------------------------------------------------------------------------------------
+
+def divide_signal(signal, t, imfs, mis, cutoff = 0.05, plot = False):
+    cut_point = np.where(mis > cutoff)[0][0]    
+    stochastic_component = np.sum(imfs[:cut_point], axis=0)
+    deterministic_component = np.sum(imfs[cut_point:], axis=0)
+
+    if plot:
+        # Creating grid of subplots
+        fig = make_subplots(rows = 3, cols = 1, subplot_titles = ['Original Signal', 'Stochastic Component', 'Deterministic Component'])
+        
+        # Scattering signal and components
+        fig.add_trace(go.Scatter(x = t, y = signal, mode = 'lines', name = 'Original Signal'), row = 1, col = 1)
+        fig.add_trace(go.Scatter(x = t, y = stochastic_component, mode = 'lines', name = 'Stochastic Component'), row = 2, col = 1)
+        fig.add_trace(go.Scatter(x = t, y = deterministic_component, mode = 'lines', name = 'Deterministic Component'), row = 3, col = 1)
+
+        # Update layout
+        fig.update_layout(
+            showlegend = False,
+            font = dict(size = 20),
+            height = 1200,
+            width = 2000
+        )
+        fig.show()
+    
+    return stochastic_component, deterministic_component
+
+#---------------------------------------------------------------------------------------------------------------------------------------
+
+def check_2008(lag, directory:str = '', smooth = True):
+
+    dirs = {
+        'lgb': directory + f'Models/{lag}/lgb.txt',
+        'xgb': directory + f'Models/{lag}/xgb.json',
+        'cat': directory + f'Models/{lag}/cat'
+    }
+
+    config.read(directory + 'config.cfg')
+    log = bool(config.get('params', 'log'))
+
+    data = pd.read_parquet(directory + 'Data_for_models/final_CS.parquet').dropna(subset = [f'target_{lag}_week_fut'])
+
+    lgb_model = lgb.Booster(model_file = dirs['lgb'])
+    xgb_model = xgb.Booster()
+    xgb_model.load_model(dirs['xgb'])
+    cat_model = cat.CatBoost().load_model(dirs['cat'])
+    stacking_model = sm.load(directory + f'Models/{lag}/stacking.pickle')
+
+    # Split dataset on train, validation and test
+    train_data = pd.read_parquet(directory + 'Data_for_models/final_full.parquet')
+    train_cols = train_data.drop(columns = train_data.columns[train_data.columns.str.contains('_week_fut')])
+
+    Y = data[f'target_{lag}_week_fut']
+    X = data.drop(columns = data.columns[data.columns.str.contains('_week_fut')])
+    X = X[train_cols.columns]
+    X_xgb = xgb.DMatrix(X)
+
+    pred_lgb = lgb_model.predict(X)
+    pred_xgb = xgb_model.predict(X_xgb)
+    pred_cat = cat_model.predict(X)
+    preds = pd.DataFrame({'orig': Y, 'lgb': pred_lgb, 'xgb': pred_xgb, 'cat': pred_cat})
+    preds['stack'] = stacking_model.predict(preds[list(stacking_model.params.index)])
+
+    if smooth == True:
+        imfs = emd(preds['stack'], preds.index)
+        imfs_p = phase_spectrum(imfs)
+        mis = phase_mi(imfs_p)
+        rmse_min = np.inf
+        best_cut = 0.5
+        for cut in np.linspace(0.25, 3, 12):
+            try:
+                stochastic_component, deterministic_component = divide_signal(preds['stack'], preds.index, imfs, mis, cutoff = cut)
+                if mse(deterministic_component, preds['orig'], squared = False) < rmse_min:
+                    best_cut = cut
+            except:
+                pass
+        stochastic_component, deterministic_component = divide_signal(preds['stack'], preds.index, imfs, mis, cutoff = best_cut)
+        preds['smoothed'] = deterministic_component
+
+    if log == True:
+        preds = np.exp(preds)
+    preds.to_parquet(directory + f'Predictions/{lag}/2008.parquet')
+    
+    print(f'\n 2008 stacking, {lag} lag:')
+    print('Final RMSE for Case-Shiller:', round(mse(preds['stack'], preds['orig'], squared = False), 2))
+    if smooth == True:
+        print('Final RMSE for Case-Shiller with smoothed predictions is:', round(mse(preds['smoothed'], preds['orig'], squared = False), 2))
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x = preds.index, y = preds['orig'], mode = 'lines', name = 'True values'))
+    if smooth == True:
+        fig.add_trace(go.Scatter(x = preds.index, y = preds['smoothed'], mode = 'lines', name = 'Smoothed stacked prediction'))
+    fig.add_trace(go.Scatter(x = preds.index, y = preds['stack'], mode = 'lines', name = 'Stacked prediction', opacity = 0.4))
+    fig.add_trace(go.Scatter(x = preds.index, y = preds['lgb'], mode = 'lines', name = 'LightGBM prediction', opacity = 0.2))
+    fig.add_trace(go.Scatter(x = preds.index, y = preds['xgb'], mode = 'lines', name = 'XGBoost prediction', opacity = 0.2))
+    fig.add_trace(go.Scatter(x = preds.index, y = preds['cat'], mode = 'lines', name = 'CatBoost prediction', opacity = 0.2))
+    fig.update_layout(showlegend = True,
+                    font = dict(size = 20),
+                    title = 'Predictions vs Case-Shiller',
+                    title_x = 0.5,
+                    xaxis_title = 'Date',
+                    yaxis_title = 'Home price, $',
+                    legend = dict(x = 0, y = 1, traceorder = 'normal'),
+                    width = 2400,
+                    height = 1000)
+    fig.write_image(directory + f"Models/{lag}/2008.png")
