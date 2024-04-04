@@ -719,9 +719,9 @@ def check_2008(lag, directory:str = '', smooth = True):
     preds.to_parquet(directory + f'Predictions/{lag}/2008.parquet')
     
     print(f'\n 2008 stacking, {lag} lag:')
-    print('Final RMSE for Case-Shiller:', round(mse(preds['stack'], preds['orig'], squared = False), 2))
+    print('Final RMSE for Case-Shiller:', round(mse(preds['stack'], preds['orig'], squared = False), 3))
     if smooth == True:
-        print('Final RMSE for Case-Shiller with smoothed predictions is:', round(mse(preds['smoothed'], preds['orig'], squared = False), 2))
+        print('Final RMSE for Case-Shiller with smoothed predictions is:', round(mse(preds['smoothed'], preds['orig'], squared = False), 3))
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(x = preds.index, y = preds['orig'], mode = 'lines', name = 'True values'))
@@ -732,7 +732,7 @@ def check_2008(lag, directory:str = '', smooth = True):
     fig.add_trace(go.Scatter(x = preds.index, y = preds['xgb'], mode = 'lines', name = 'XGBoost prediction', opacity = 0.2))
     fig.add_trace(go.Scatter(x = preds.index, y = preds['cat'], mode = 'lines', name = 'CatBoost prediction', opacity = 0.2))
     fig.update_layout(showlegend = True,
-                    font = dict(size = 20),
+                    font = dict(size = 40),
                     title = 'Predictions vs Case-Shiller',
                     title_x = 0.5,
                     xaxis_title = 'Date',
