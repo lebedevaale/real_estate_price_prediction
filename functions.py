@@ -59,10 +59,9 @@ def variables_dynamics(data):
     # Update layout
     fig.update_layout(
         showlegend = False,
-        template = 'plotly_dark',
         font = dict(size = 20),
         height = 300 * len(data.columns),
-        width = 1200
+        width = 1500
     )
 
     # Show the plot
@@ -104,10 +103,9 @@ def heatmap(data):
     # Update layout
     fig.update_layout(
         showlegend = False,
-        template = 'plotly_dark',
-        font = dict(size = 14),
-        height = 600,
-        width = 1600
+        font = dict(size = 20),
+        height = 1600,
+        width = 3200
     )
     fig.update_annotations(font_size = 30)
 
@@ -740,6 +738,6 @@ def check_2008(lag, directory:str = '', smooth = True):
                     xaxis_title = 'Date',
                     yaxis_title = 'Home price, $',
                     legend = dict(x = 0, y = 1, traceorder = 'normal'),
-                    width = 2400,
-                    height = 1000)
+                    width = 5000,
+                    height = 2000)
     fig.write_image(directory + f"Models/{lag}/2008.png")
