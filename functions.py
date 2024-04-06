@@ -13,7 +13,6 @@ import catboost as cat
 import plotly.io as pio
 from scipy.fft import fft
 import statsmodels.api as sm
-from tqdm.notebook import tqdm
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 from contextlib import contextmanager
@@ -22,7 +21,7 @@ from statsmodels.tsa.stattools import adfuller
 from sklearn.metrics import mean_squared_error as mse
 from sklearn.feature_selection import mutual_info_regression
 
-pio.templates.default = "plotly_dark"
+pio.templates.default = "plotly_white"
 
 # Receiving hyperparams for sample modifications
 from configparser import ConfigParser
@@ -30,7 +29,8 @@ config = ConfigParser()
 
 #---------------------------------------------------------------------------------------------------------------------------------------
 
-def variables_dynamics(data):
+def variables_dynamics(data,
+                       directory = ''):
 
     """
     Function for the plotting of the dynamics for the variables
@@ -39,14 +39,12 @@ def variables_dynamics(data):
     --------------------
     data : pd.DataFrame
         Dataframe with columns for the analysis
-    groupby : str
-        Column to groupby
-    mean_only : bool = False
-        Whether to plot only means and not min-max
+    directory : str = ''
+        Directory where data is stored if it isn't CWD
 
-    Prints:
+    Plots:
     --------------------
-    Dynamics of the variables
+    Plot with dynamics of the variables
     """
 
     # Creating grid of subplots
@@ -56,20 +54,23 @@ def variables_dynamics(data):
     for i, col in enumerate(data.columns):
         fig.add_trace(go.Scatter(x = data.index, y = data[col], mode = 'lines', name = col), row = i + 1, col = 1)
 
-    # Update layout
+    # Update layout and save plot
     fig.update_layout(
         showlegend = False,
         font = dict(size = 20),
         height = 300 * len(data.columns),
-        width = 1500
+        width = 1600
     )
+    # pio.write_image(fig, directory + f"Data_for_models/dynamics.png", scale = 6, width = 1600, height = 300 * len(data.columns))
+    pio.write_image(fig, directory + f"Data_for_models/dynamics.svg", scale = 6, width = 1600, height = 300 * len(data.columns))
 
     # Show the plot
     fig.show()
 
 #---------------------------------------------------------------------------------------------------------------------------------------
 
-def heatmap(data):
+def heatmap(data, 
+            directory = ''):
 
     """
     Function for the plotting of the correlation heatmap
@@ -78,10 +79,12 @@ def heatmap(data):
     --------------------
     data : pd.DataFrame
         Dataframe with columns for the analysis
+    directory : str = ''
+        Directory where data is stored if it isn't CWD
     
-    Prints:
+    Plots:
     --------------------
-    Correlation heatmap
+    Correlation heatmaps
     """
 
     # Creating grid of subplots
@@ -100,7 +103,7 @@ def heatmap(data):
                                  zmin = -1, zmax = 1), 
                                  row = 1, col = i + 1)
 
-    # Update layout
+    # Update layout and save plot
     fig.update_layout(
         showlegend = False,
         font = dict(size = 20),
@@ -108,6 +111,8 @@ def heatmap(data):
         width = 3200
     )
     fig.update_annotations(font_size = 30)
+    pio.write_image(fig, directory + f"Data_for_models/heatmaps.png", scale = 6, width = 2800, height = 1400)
+    pio.write_image(fig, directory + f"Data_for_models/heatmaps.svg", scale = 6, width = 3200, height = 1600)
 
     # Show the plot
     fig.show()
@@ -115,8 +120,8 @@ def heatmap(data):
 #-------------------------------------------------------------------------------------------------------
 
 def stationarity(data):
-
-    '''
+    
+    """
     Function for the calculation of stationarity of time series
 
     Inputs:
@@ -128,8 +133,9 @@ def stationarity(data):
     --------------------
     res : pd.DataFrame
         Dataframe with results of the stationarity test
-    '''
+    """
 
+    # Calculate metrics of stationarity and level of chaos in the data
     res = pd.DataFrame(columns = ['Variable', 'DF statistics', 'DF p-value', 'Lyapunov LE', 'Hurst E'])
     for col in data.columns:
         stat = adfuller(data[col])
@@ -140,10 +146,11 @@ def stationarity(data):
 #---------------------------------------------------------------------------------------------------------------------------------------
 
 def remove_most_insignificant(X_val, X_test, results):
+    
     """
     Function for the removal of the most insignificant variables from the model
 
-    Parameters
+    Inputs:
     ----------
     X_val : DataFrame
         Set of X for the validation of the model
@@ -152,16 +159,18 @@ def remove_most_insignificant(X_val, X_test, results):
     results : model
         Fitted statsmodels model
 
-    Returns
+    Returns:
     ----------
     X_val : DataFrame
         Optimized set of X for the validation of the model
     X_test : DataFrame
         Optimized set of X for the testing of the model
     """
-    # use operator to find the key which belongs to the maximum value in the dictionary:
+
+    # Use operator to find the key which belongs to the maximum value in the dictionary:
     max_p_value = max(results.pvalues.iteritems(), key = operator.itemgetter(1))[0]
-    # this is the feature you want to drop:
+    
+    # Drop the worst feature
     X_val.drop(columns = max_p_value, inplace = True)
     X_test.drop(columns = max_p_value, inplace = True)
 
@@ -169,20 +178,31 @@ def remove_most_insignificant(X_val, X_test, results):
 
 #---------------------------------------------------------------------------------------------------------------------------------------
 
-def OLS_optimization(Y_val, X_val, Y_test, X_test, p_value_bord:float = 0.05, log:bool = False):
+def OLS_optimization(Y_val, 
+                     X_val, 
+                     Y_test, 
+                     X_test,
+                     p_value_bord:float = 0.05, 
+                     log:bool = False,
+                     silent_results:bool = False):
+    
     """
     Function for the optimization of OLS
 
-    Parameters
+    Inputs:
     ----------
     Y_val, Y_test : array
         Target variable for the regression
     X_val, X_test : DataFrame
         Set of X for the model
-    p_value : float = 0.05
+    p_value_bord : float = 0.05
         Maximum acceptable p-value for the coefficient
+    log : bool = False
+        Whether to raise target and predictions data to the exponent before calculating RMSE
+    silent_results : bool = False
+        Whether to print whole stats of the regression
 
-    Returns
+    Returns:
     ----------
     results : model
         Fitted statsmodels model
@@ -194,10 +214,9 @@ def OLS_optimization(Y_val, X_val, Y_test, X_test, p_value_bord:float = 0.05, lo
         Prediction for the validation
     Y_test_pred : array
         Prediction for the test
-    log : bool = False
-        Whether target needs to be raised back to exponent
     """
     
+    # Iterate while model has insignificant features
     insignificant_feature = True
     while insignificant_feature:
         model = sm.OLS(Y_val, X_val)
@@ -206,14 +225,17 @@ def OLS_optimization(Y_val, X_val, Y_test, X_test, p_value_bord:float = 0.05, lo
         if all(significant):
             insignificant_feature = False
         else:
-            if X_val.shape[1] == 1:  # if there's only one insignificant variable left
+            # If there's only one insignificant variable left
+            if X_val.shape[1] == 1:  
                 print('No significant features found')
                 results = None
                 insignificant_feature = False
             else:
-                X_val, X_test = remove_most_insignificant(X_val, X_test,  results)
-    print(results.summary())
+                X_val, X_test = remove_most_insignificant(X_val, X_test, results)
+    if silent_results == False:
+        print(results.summary())
 
+    # Calculate validation and test predictions and scores for them
     Y_val_pred = results.predict(X_val)
     Y_test_pred = results.predict(X_test)
     if log == False:
@@ -229,8 +251,79 @@ def OLS_optimization(Y_val, X_val, Y_test, X_test, p_value_bord:float = 0.05, lo
 
 #---------------------------------------------------------------------------------------------------------------------------------------
 
+def OLS_benchmark(lag:int,
+                  directory:str = '',
+                  silent_results:bool = False):
+    
+    """
+    Main function for the estimation OLS benchmark
+
+    Inputs:
+    ----------
+    lag : int
+        Distance of prediction in weeks
+    directory : str = ''
+        Directory where data is stored if it isn't CWD
+    silent_results : bool = False
+        Whether to print whole stats of the regression
+    """
+
+    # Import val and test seize and log flag from config
+    config.read(directory + 'config.cfg')
+    val_size = float(config.get('params', 'val_size'))
+    test_size = float(config.get('params', 'test_size'))
+    log = bool(config.get('params', 'log'))
+    random_state = int(config.get('params', 'random_state'))
+
+    # Load dataset for modelling
+    data = pd.read_parquet(directory + 'Data_for_models/final_full.parquet').dropna(subset = [f'target_{lag}_week_fut'])
+
+    # Split dataset on train, validation and test
+    Y = data[f'target_{lag}_week_fut']
+    X = sm.add_constant(data.drop(columns = data.columns[data.columns.str.contains('_week_fut')]))
+    X_train, X_test, Y_train, Y_test = sk.model_selection.train_test_split(
+        X, Y, test_size = test_size, random_state = random_state)
+    X_train, X_val, Y_train, Y_val = sk.model_selection.train_test_split(
+        X_train, Y_train, test_size = (1 - test_size) * val_size, random_state = random_state)
+    
+    # Train OLS to get scores
+    print(f'\n OLS benchmark, {lag} lag:')
+    results, train_rmse, val_rmse, _, _ = OLS_optimization(Y_train, X_train, Y_val, X_val, log = log, silent_results = silent_results)
+    if log == True:
+        test_rmse = mse(np.exp(results.predict(X_test[list(results.params.index)])), np.exp(Y_test), squared = False)
+    else:
+        test_rmse = mse(results.predict(X_test[list(results.params.index)]), Y_test, squared = False)
+    print(f'Train score for OLS benchmark is: ', round(train_rmse, 3))
+    print(f'Validation score for OLS benchmark is: ', round(val_rmse, 3))
+    print(f'Test score for OLS benchmark is: ', round(test_rmse, 3))
+
+#---------------------------------------------------------------------------------------------------------------------------------------
+
 @contextmanager
-def timer(logger = None, format_str = '{:.3f}[s]', prefix = None, suffix = None):
+def timer(logger = None, 
+          format_str = '{:.3f}[s]', 
+          prefix = None, 
+          suffix = None):
+    
+    """
+    Function for the calculating time used for calculations
+
+    Inputs:
+    ----------
+    logger = None
+        Whether to log progress or to show only final results
+    format_str = '{:.3f}[s]'
+        Format in which time used will be demonstrated
+    prefix : str = None
+        Prefix for string if you need them to be different
+    suffix : str = None
+        Suffix for string if you need them to be different
+
+    Prints:
+    ----------
+    Used time
+    """
+
     if prefix: format_str = str(prefix) + format_str
     if suffix: format_str = format_str + str(suffix)
     start = time.time()
@@ -321,9 +414,48 @@ class TreeModel:
 
 #---------------------------------------------------------------------------------------------------------------------------------------
 
-def run_train_and_inference(X_train, X_val, X_test, Y_train, Y_val, Y_test, 
-                            use_model, model_params, train_params, location, log:bool = False, shaps:bool = True):
+def run_train_and_inference(X_train, X_val, X_test, 
+                            Y_train, Y_val, Y_test, 
+                            use_model : str, 
+                            model_params : dict, 
+                            train_params : dict, 
+                            location : str, 
+                            log:bool = False, 
+                            shaps:bool = True):
 
+    """
+    Function for the estimation of the models and calculation of the errors in the models
+
+    Inputs:
+    ----------
+    X_train, X_val, X_test : array
+        Set of X for the model
+    Y_train, Y_val, Y_test : array
+        Target variable for the regression
+    use_model : str
+        Name of the model: lgb, xgb or cat
+    model_params : dict
+        Hyperparameters for the model
+    train_params : dict
+        Hyperparameters for the training
+    location : str
+        Directory to save model params
+    log : bool = False
+        Whether to raise target and predictions data to the exponent before calculating RMSE
+    shaps : bool = True
+        Whether to calculate SHAP values for the model
+
+    Returns:
+    ----------
+    train_pred, val_pred, test_pred : arrays
+        Predictions for all three parts of the dataset
+    scores : dict
+        RMSE scores for all three parts of the dataset
+    shap_values
+        Calculated shap_values for the model if shaps == True, else returns None
+    """
+
+    # Train model
     model = TreeModel(model_type = use_model)
     with timer(prefix = "Model training "):
         model.train(
@@ -331,9 +463,12 @@ def run_train_and_inference(X_train, X_val, X_test, Y_train, Y_val, Y_test,
             X_val = X_val, y_val = Y_val, train_params = train_params,
             location = location)
 
+    # Estimate predictions for the train, val and test
     train_pred = model.predict(X_train)
     val_pred = model.predict(X_val)
     test_pred = model.predict(X_test)
+    
+    # Calculate RMSE for estimations
     if log == False:
         train_score = mse(Y_train, train_pred, squared = False)
         val_score = mse(Y_val, val_pred, squared = False)
@@ -347,6 +482,7 @@ def run_train_and_inference(X_train, X_val, X_test, Y_train, Y_val, Y_test,
     print(f'Test score for {use_model} is: ', round(test_score, 2))
     scores = {"train": train_score, "val": val_score, "test": test_score}
 
+    # Calculate SHAP values if needed
     if shaps == True:
         explainer = shap.Explainer(model.predict, X_train)
         shap_values = explainer(X_val)
@@ -357,9 +493,37 @@ def run_train_and_inference(X_train, X_val, X_test, Y_train, Y_val, Y_test,
 
 #---------------------------------------------------------------------------------------------------------------------------------------
 
-def optuna_and_boosting(lag, random_state, directory:str = '',
+def optuna_and_boosting(lag:int, 
+                        random_state:int, 
+                        directory:str = '',
                         shaps:bool = True):
     
+    """
+    Main function for the estimation of the boosting models
+
+    Inputs:
+    ----------
+    lag : int
+        Distance of prediction in weeks
+    random_state : int
+        Seed for the RNG
+    directory : str = ''
+        Directory where data is stored if it isn't CWD
+    shaps : bool = True
+        Whether to calculate SHAP values for the model
+    
+    Prints:
+    ----------
+    Training process and scores of LightGBM, XGBoost and Catboost models
+    Stacking results
+    Comparison of the models by scores on validation and test
+
+    Files:
+    ----------
+    Model params for LightGBM, XGBoost, Catboost and stacking models
+    Predictions and target values for validation and testing
+    """
+
     def objective_lgb(trial):
 
         param = {
@@ -464,6 +628,7 @@ def optuna_and_boosting(lag, random_state, directory:str = '',
 
         return trial
 
+    # Import val and test seize and log flag from config
     config.read(directory + 'config.cfg')
     val_size = float(config.get('params', 'val_size'))
     test_size = float(config.get('params', 'test_size'))
@@ -480,7 +645,7 @@ def optuna_and_boosting(lag, random_state, directory:str = '',
     X_train, X_val, Y_train, Y_val = sk.model_selection.train_test_split(
         X_train, Y_train, test_size = (1 - test_size) * val_size, random_state = random_state)
 
-    # Fixed params for the models
+    # Fixed hyperparams for the models
     param_lgb = {
         "verbosity": -1,
         "objective": "regression",
@@ -526,63 +691,84 @@ def optuna_and_boosting(lag, random_state, directory:str = '',
         'cat': directory + f'Models/{lag}/cat'
     }
 
+    # Find optimal hyperparams for LightGBM with Optuna
     print(f'\n LightGBM, {lag} lag:')
     trial_lgb = optuna_study('lgb')
     trial_lgb.params.update(param_lgb)
+
+    # Train LightGBM model
     train_pred_lgb, val_pred_lgb, test_pred_lgb, score_lgb, shap_lgb = run_train_and_inference(
         X_train, X_val, X_test, Y_train, Y_val, Y_test, "lgb", trial_lgb.params, train_param_lxgb, 
         dirs['lgb'], log = log, shaps = shaps)
+    
+    # Calculate SHAP values for LightGBM model
     if shaps == True:
         shap.plots.beeswarm(shap_lgb, show = False, color_bar = False)
         plt.savefig(directory + f'Models/{lag}/lgb.png', bbox_inches = 'tight', dpi = 750)
     
+    # Find optimal hyperparams for XGBoost with Optuna
     print(f'\n XGBoost, {lag} lag:')
     trial_xgb = optuna_study('xgb')
     trial_xgb.params.update(param_xgb)
+
+    # Train XGBoost model
     train_pred_xgb, val_pred_xgb, test_pred_xgb, score_xgb, shap_xgb = run_train_and_inference(
         X_train, X_val, X_test, Y_train, Y_val, Y_test, "xgb", trial_xgb.params, train_param_lxgb, 
         dirs['xgb'], log = log, shaps = shaps)
+    
+    # Calculate SHAP values for XGBoost model
     if shaps == True:
         shap.plots.beeswarm(shap_xgb, show = False, color_bar = False)
         plt.savefig(directory + f'Models/{lag}/xgb.png', bbox_inches = 'tight', dpi = 750)
     
+    # Find optimal hyperparams for CatBoost with Optuna
     print(f'\n CatBoost, {lag} lag:')
     trial_cat = optuna_study('cat')
     trial_cat.params.update(param_cat)
+
+    # Train CatBoost model
     train_pred_cat, val_pred_cat, test_pred_cat, score_cat, shap_cat = run_train_and_inference(
         X_train, X_val, X_test, Y_train, Y_val, Y_test, "cat", trial_cat.params, train_param_cat, 
         dirs['cat'], log = log, shaps = shaps)
+    
+    # Calculate SHAP values for CatBoost model
     if shaps == True:
         shap.plots.beeswarm(shap_cat, show = False, color_bar = False)
         plt.savefig(directory + f'Models/{lag}/cat.png', bbox_inches = 'tight', dpi = 750)
 
+    # Create comparison table
     stats = pd.DataFrame()
     stats['models'] = ['lgb', 'xgb', 'cat']
     stats['valid'] = [score_lgb["val"], score_xgb["val"], score_cat["val"]]
     stats['test'] = [score_lgb["test"], score_xgb["test"], score_cat["test"]]
 
+    # Create table with target and predictions for validation
     stack_val = pd.DataFrame()
     stack_val['orig'] = Y_val
     stack_val['lgb'] = val_pred_lgb
     stack_val['xgb'] = val_pred_xgb
     stack_val['cat'] = val_pred_cat
 
+    # Create table with target and predictions for test
     stack_test = pd.DataFrame()
     stack_test['orig'] = Y_test
     stack_test['lgb'] = test_pred_lgb
     stack_test['xgb'] = test_pred_xgb
     stack_test['cat'] = test_pred_cat
 
+    # Train stacking model on the validation data
     print(f'\n Stacking, {lag} lag:')
     results, val_rmse, test_rmse, Y_val_pred, Y_test_pred = OLS_optimization(
         stack_val.orig, stack_val.drop('orig', axis = 1).copy(), 
         stack_test.orig, stack_test.drop('orig', axis = 1).copy(), log = log)
     results.save(directory + f'Models/{lag}/stacking.pickle')
 
+    # Update comparison table with stacked results and print it
     stats.loc[len(stats)] = ['stacked', val_rmse, test_rmse]
     print(f'\n Comparison, {lag} lag:')
     print(stats)
 
+    # Save target and predictions for validation and tests
     stack_val['stack'] = Y_val_pred
     stack_test['stack'] = Y_test_pred
     stack_val.to_parquet(directory + f'Predictions/{lag}/gb_val.parquet')
@@ -590,7 +776,87 @@ def optuna_and_boosting(lag, random_state, directory:str = '',
 
 #---------------------------------------------------------------------------------------------------------------------------------------
 
-def emd(signal, t, plot = False):
+def target_pred_dist(lag:int,
+                     directory:str = ''):
+
+    """
+    Function for the plotting of the distributions of target and predictions
+
+    Inputs:
+    ----------
+    lag : int
+        Distance of prediction in weeks
+    directory : str = ''
+        Directory where data is stored if it isn't CWD
+
+    Files:
+    ----------
+    Plot with comparison of validation target and predictions
+    Plot with comparison of test target and predictions
+    """
+
+    # Import log flag from config
+    config.read(directory + 'config.cfg')
+    log = bool(config.get('params', 'log'))
+
+    samples = {'val': 'Validation', 'test': 'Test'}
+    for key in samples.keys():
+        # Import validation and test target and predictions
+        data = pd.read_parquet(directory + f'Predictions/{lag}/gb_{key}.parquet')[['stack', 'orig']]
+
+        # Plot data distributions regarding if it was logged before
+        fig = go.Figure()
+        if log == True:
+            fig.add_trace(go.Histogram(x = np.exp(data['orig']), name = f'{samples[key]} target'))
+            fig.add_trace(go.Histogram(x = np.exp(data['stack']), name = f'{samples[key]} stacked prediction'))
+        else:
+            fig.add_trace(go.Histogram(x = data['orig'], name = f'{samples[key]} target'))
+            fig.add_trace(go.Histogram(x = data['stack'], name = f'{samples[key]} stacked prediction'))
+        fig.update_layout(barmode = 'overlay',
+                          showlegend = True,
+                          font = dict(size = 30),
+                          title = 'Predictions vs Case-Shiller',
+                          title_x = 0.5,
+                          xaxis_title = 'Home price, $',
+                          yaxis_title = 'Count',
+                          legend = dict(x = 0.8, y = 1, traceorder = 'normal'))
+        fig.update_traces(opacity = 0.75)
+        fig.update_layout()
+
+        # Save plots
+        pio.write_image(fig, directory + f"Predictions/{lag}/{key}_dist.png", scale = 6, width = 3000, height = 1500)
+        pio.write_image(fig, directory + f"Predictions/{lag}/{key}_dist.svg", scale = 6, width = 3000, height = 1500)
+
+#---------------------------------------------------------------------------------------------------------------------------------------
+
+def emd(signal, 
+        t, 
+        plot:bool = False):
+
+    """
+    Function for the decomposition of time series to the several components until the last one is monotonous
+    Source: https://towardsdatascience.com/improve-your-time-series-analysis-with-stochastic-and-deterministic-components-decomposition-464e623f8270
+    
+    Inputs:
+    ----------
+    signal : array
+        Time series for decomposition
+    t : array
+        Index of time series for plotting
+    plot : bool = False
+        Flag whether to plot of decomposed time series is needed
+
+    Plots:
+    ----------
+    Plots of original time series and its decomposed parts if plot == True
+
+    Returns:
+    ----------
+    imfs : array
+        Decomposed time series
+    """
+
+    # Separate time series into components
     emd = EMD(DTYPE = np.float16, spline_kind = 'akima')
     imfs = emd(signal.values)
     N = imfs.shape[0]
@@ -618,6 +884,23 @@ def emd(signal, t, plot = False):
 #---------------------------------------------------------------------------------------------------------------------------------------
 
 def phase_spectrum(imfs):
+
+    """
+    Function for the calculation of the time series' phase spectrum
+    Source: https://towardsdatascience.com/improve-your-time-series-analysis-with-stochastic-and-deterministic-components-decomposition-464e623f8270
+    
+    Inputs:
+    ----------
+    imfs : array
+        Decomposed time series
+
+    Returns:
+    ----------
+    imfs_p : array
+        Phase spectrum of decomposed time series
+    """
+
+    # Iterate over decomposed timer series to calculate each ones phase spectrum
     imfs_p = []
     for imf in imfs:
         trans = fft(imf)
@@ -629,6 +912,23 @@ def phase_spectrum(imfs):
 #---------------------------------------------------------------------------------------------------------------------------------------
 
 def phase_mi(phases):
+
+    """
+    Function for the calculation of mutual information in the phases
+    Source: https://towardsdatascience.com/improve-your-time-series-analysis-with-stochastic-and-deterministic-components-decomposition-464e623f8270
+    
+    Inputs:
+    ----------
+    phases : array
+        Phase spectrum of decomposed time series
+    
+    Returns:
+    ----------
+    mis : array
+        Mutual information of phase spectrums of decomposed time series
+    """
+
+    # Iterate over phases to calculate mutual info
     mis = []
     for i in range(len(phases) - 1):
         mis.append(mutual_info_regression(phases[i].reshape(-1, 1), phases[i + 1])[0])
@@ -637,7 +937,45 @@ def phase_mi(phases):
 
 #---------------------------------------------------------------------------------------------------------------------------------------
 
-def divide_signal(signal, t, imfs, mis, cutoff = 0.05, plot = False):
+def divide_signal(signal, 
+                  t, 
+                  imfs, 
+                  mis, 
+                  cutoff:float = 0.05, 
+                  plot = False):
+
+    """
+    Function for the final separation to the stohastic and determenistic components
+    Source: https://towardsdatascience.com/improve-your-time-series-analysis-with-stochastic-and-deterministic-components-decomposition-464e623f8270
+    
+    Inputs:
+    ----------
+    signal : array
+        Time series for decomposition
+    t : array
+        Index of time series for plotting
+    imfs : array
+        Decomposed time series
+    mis : array
+        Mutual information of phase spectrums of decomposed time series
+    cutoff : float = 0.05
+        Border of separation between stohastic and determenistic components
+    plot : bool = False
+        Flag whether to plot original time series, stohastic and determenistic components
+
+    Plots:
+    ----------
+    Plots of original time series, stohastic and determenistic components if plot == True
+
+    Returns:
+    ----------
+    stochastic_component : array
+        Sum of time series components that are considered stohastic
+    deterministic_component : array
+        Sum of time series components that are considered deterministic
+    """
+
+    # Separate time series to stohastic and deterministic components 
     cut_point = np.where(mis > cutoff)[0][0]    
     stochastic_component = np.sum(imfs[:cut_point], axis=0)
     deterministic_component = np.sum(imfs[cut_point:], axis=0)
@@ -664,19 +1002,42 @@ def divide_signal(signal, t, imfs, mis, cutoff = 0.05, plot = False):
 
 #---------------------------------------------------------------------------------------------------------------------------------------
 
-def check_2008(lag, directory:str = '', smooth = True):
+def check_2008(lag:int, 
+               directory:str = '', 
+               smooth:bool = True):
 
+    """
+    Function for the additional testing with Case-Shiller index
+
+    Inputs:
+    ----------
+    lag : int
+        Distance of prediction in weeks
+    directory : str = ''
+        Directory where data is stored if it isn't CWD
+    smooth : bool = True
+        Flag whether to smooth stacked prediction with FFT
+    
+    Files:
+    ----------
+    Plot of comparison between target and (smoothed) prediction
+    """
+
+    # Dict with directories where models are stored
     dirs = {
         'lgb': directory + f'Models/{lag}/lgb.txt',
         'xgb': directory + f'Models/{lag}/xgb.json',
         'cat': directory + f'Models/{lag}/cat'
     }
 
+    # Import log flag from config
     config.read(directory + 'config.cfg')
     log = bool(config.get('params', 'log'))
 
+    # Import Case-Shiller data
     data = pd.read_parquet(directory + 'Data_for_models/final_CS.parquet').dropna(subset = [f'target_{lag}_week_fut'])
 
+    # Import boosting and stacking models
     lgb_model = lgb.Booster(model_file = dirs['lgb'])
     xgb_model = xgb.Booster()
     xgb_model.load_model(dirs['xgb'])
@@ -687,17 +1048,20 @@ def check_2008(lag, directory:str = '', smooth = True):
     train_data = pd.read_parquet(directory + 'Data_for_models/final_full.parquet')
     train_cols = train_data.drop(columns = train_data.columns[train_data.columns.str.contains('_week_fut')])
 
+    # Split data to X and Y
     Y = data[f'target_{lag}_week_fut']
     X = data.drop(columns = data.columns[data.columns.str.contains('_week_fut')])
     X = X[train_cols.columns]
     X_xgb = xgb.DMatrix(X)
 
+    # Predict target with all models
     pred_lgb = lgb_model.predict(X)
     pred_xgb = xgb_model.predict(X_xgb)
     pred_cat = cat_model.predict(X)
     preds = pd.DataFrame({'orig': Y, 'lgb': pred_lgb, 'xgb': pred_xgb, 'cat': pred_cat})
     preds['stack'] = stacking_model.predict(preds[list(stacking_model.params.index)])
 
+    # Smooth stacked prediction with FFT
     if smooth == True:
         imfs = emd(preds['stack'], preds.index)
         imfs_p = phase_spectrum(imfs)
@@ -714,15 +1078,18 @@ def check_2008(lag, directory:str = '', smooth = True):
         stochastic_component, deterministic_component = divide_signal(preds['stack'], preds.index, imfs, mis, cutoff = best_cut)
         preds['smoothed'] = deterministic_component
 
+    # Save predictions
     if log == True:
         preds = np.exp(preds)
     preds.to_parquet(directory + f'Predictions/{lag}/2008.parquet')
     
+    # Print statistics
     print(f'\n 2008 stacking, {lag} lag:')
     print('Final RMSE for Case-Shiller:', round(mse(preds['stack'], preds['orig'], squared = False), 3))
     if smooth == True:
         print('Final RMSE for Case-Shiller with smoothed predictions is:', round(mse(preds['smoothed'], preds['orig'], squared = False), 3))
 
+    # Create a plot of predictions vs target and save it
     fig = go.Figure()
     fig.add_trace(go.Scatter(x = preds.index, y = preds['orig'], mode = 'lines', name = 'True values'))
     if smooth == True:
@@ -732,12 +1099,11 @@ def check_2008(lag, directory:str = '', smooth = True):
     fig.add_trace(go.Scatter(x = preds.index, y = preds['xgb'], mode = 'lines', name = 'XGBoost prediction', opacity = 0.2))
     fig.add_trace(go.Scatter(x = preds.index, y = preds['cat'], mode = 'lines', name = 'CatBoost prediction', opacity = 0.2))
     fig.update_layout(showlegend = True,
-                    font = dict(size = 40),
-                    title = 'Predictions vs Case-Shiller',
-                    title_x = 0.5,
-                    xaxis_title = 'Date',
-                    yaxis_title = 'Home price, $',
-                    legend = dict(x = 0, y = 1, traceorder = 'normal'),
-                    width = 5000,
-                    height = 2000)
-    fig.write_image(directory + f"Models/{lag}/2008.png")
+                      font = dict(size = 30),
+                      title = 'Predictions vs Case-Shiller',
+                      title_x = 0.5,
+                      xaxis_title = 'Date',
+                      yaxis_title = 'Home price, $',
+                      legend = dict(x = 0, y = 1, traceorder = 'normal'))
+    pio.write_image(fig, directory + f"Models/{lag}/2008.png", scale = 6, width = 3000, height = 1500)
+    pio.write_image(fig, directory + f"Models/{lag}/2008.svg", scale = 6, width = 3000, height = 1500)
