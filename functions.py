@@ -1107,3 +1107,46 @@ def check_2008(lag:int,
                       legend = dict(x = 0, y = 1, traceorder = 'normal'))
     pio.write_image(fig, directory + f"Models/{lag}/2008.png", scale = 6, width = 3000, height = 1500)
     pio.write_image(fig, directory + f"Models/{lag}/2008.svg", scale = 6, width = 3000, height = 1500)
+
+#---------------------------------------------------------------------------------------------------------------------------------------
+
+def boosting_hyperparameters(lag:int,
+                             directory:str = ''):
+
+    """
+    Function for the retrieval of the gradient boosting hyperparameters
+
+    Inputs:
+    ----------
+    lag : int
+        Distance of prediction in weeks
+    directory : str = ''
+        Directory where data is stored if it isn't CWD
+
+    Prints:
+    ----------
+    Hyperparameters for LightGBM, XGBoost and Catboost models
+    """
+
+    # Dict with directories where models are stored
+    dirs = {
+        'lgb': directory + f'Models/{lag}/lgb.txt',
+        'xgb': directory + f'Models/{lag}/xgb.json',
+        'cat': directory + f'Models/{lag}/cat'
+    }
+
+    # Get hyperparameters for LightGBM
+    lgb_model = lgb.Booster(model_file = dirs['lgb'])
+    print(f'\n LightGBM, {lag} lag:')
+    print(lgb_model.params)
+
+    # Get hyperparameters for XGBoost
+    xgb_model = xgb.XGBRegressor()
+    xgb_model.load_model(dirs['xgb'])
+    print(f'\n XGBoost, {lag} lag:')
+    print(xgb_model.get_xgb_params())
+
+    # Get hyperparameters for CatBoost
+    cat_model = cat.CatBoost().load_model(dirs['cat'])
+    print(f'\n CatBoost, {lag} lag:')
+    print(cat_model.get_params())
