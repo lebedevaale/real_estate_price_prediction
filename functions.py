@@ -1002,7 +1002,8 @@ def divide_signal(signal,
 
 #---------------------------------------------------------------------------------------------------------------------------------------
 
-def check_2008(lag:int, 
+def check_2008(lag:int,
+               periods:list = None,
                directory:str = '', 
                smooth:bool = True):
 
@@ -1013,6 +1014,8 @@ def check_2008(lag:int,
     ----------
     lag : int
         Distance of prediction in weeks
+    periods : list = None
+        Periods to analyze separately. Should look like [[start_1, finish_1], [start_2, finish_2]]. Borders are included
     directory : str = ''
         Directory where data is stored if it isn't CWD
     smooth : bool = True
@@ -1083,30 +1086,41 @@ def check_2008(lag:int,
         preds = np.exp(preds)
     preds.to_parquet(directory + f'Predictions/{lag}/2008.parquet')
     
-    # Print statistics
+    # Print statistics for each of the periods
     print(f'\n 2008 stacking, {lag} lag:')
-    print('Final RMSE for Case-Shiller:', round(mse(preds['stack'], preds['orig'], squared = False), 3))
-    if smooth == True:
-        print('Final RMSE for Case-Shiller with smoothed predictions is:', round(mse(preds['smoothed'], preds['orig'], squared = False), 3))
+    if periods == None:
+        periods = [[preds.index.min(), preds.index.max()]]
+    for period in periods:
+        preds_period = preds.loc[period[0]:period[1]]
+        print(f'\n Start date : {str(period[0])[:10]}, end date: {str(period[1])[:10]}')
+        print('Final RMSE for Case-Shiller:', round(mse(preds_period['stack'], 
+                                                        preds_period['orig'], 
+                                                        squared = False), 3))
+        if smooth == True:
+            print('Final RMSE for Case-Shiller with smoothed predictions is:', round(mse(preds_period['smoothed'], 
+                                                                                         preds_period['orig'], 
+                                                                                         squared = False), 3))
 
-    # Create a plot of predictions vs target and save it
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x = preds.index, y = preds['orig'], mode = 'lines', name = 'True values'))
-    if smooth == True:
-        fig.add_trace(go.Scatter(x = preds.index, y = preds['smoothed'], mode = 'lines', name = 'Smoothed stacked prediction'))
-    fig.add_trace(go.Scatter(x = preds.index, y = preds['stack'], mode = 'lines', name = 'Stacked prediction', opacity = 0.4))
-    fig.add_trace(go.Scatter(x = preds.index, y = preds['lgb'], mode = 'lines', name = 'LightGBM prediction', opacity = 0.2))
-    fig.add_trace(go.Scatter(x = preds.index, y = preds['xgb'], mode = 'lines', name = 'XGBoost prediction', opacity = 0.2))
-    fig.add_trace(go.Scatter(x = preds.index, y = preds['cat'], mode = 'lines', name = 'CatBoost prediction', opacity = 0.2))
-    fig.update_layout(showlegend = True,
-                      font = dict(size = 30),
-                      title = 'Predictions vs Case-Shiller',
-                      title_x = 0.5,
-                      xaxis_title = 'Date',
-                      yaxis_title = 'Home price, $',
-                      legend = dict(x = 0, y = 1, traceorder = 'normal'))
-    pio.write_image(fig, directory + f"Models/{lag}/2008.png", scale = 6, width = 3000, height = 1500)
-    pio.write_image(fig, directory + f"Models/{lag}/2008.svg", scale = 6, width = 3000, height = 1500)
+        # Create a plot of predictions vs target and save it
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x = preds_period.index, y = preds_period['orig'], mode = 'lines', name = 'True values'))
+        if smooth == True:
+            fig.add_trace(go.Scatter(x = preds_period.index, y = preds_period['smoothed'], mode = 'lines', name = 'Smoothed stacked prediction'))
+        fig.add_trace(go.Scatter(x = preds_period.index, y = preds_period['stack'], mode = 'lines', name = 'Stacked prediction', opacity = 0.4))
+        fig.add_trace(go.Scatter(x = preds_period.index, y = preds_period['lgb'], mode = 'lines', name = 'LightGBM prediction', opacity = 0.2))
+        fig.add_trace(go.Scatter(x = preds_period.index, y = preds_period['xgb'], mode = 'lines', name = 'XGBoost prediction', opacity = 0.2))
+        fig.add_trace(go.Scatter(x = preds_period.index, y = preds_period['cat'], mode = 'lines', name = 'CatBoost prediction', opacity = 0.2))
+        fig.update_layout(showlegend = True,
+                        font = dict(size = 30),
+                        title = 'Predictions vs Case-Shiller',
+                        title_x = 0.5,
+                        xaxis_title = 'Date',
+                        yaxis_title = 'Home price, $',
+                        legend = dict(x = 0, y = 1, traceorder = 'normal'))
+        pio.write_image(fig, directory + f"Alternative_test/{lag}/CS_{str(period[0])[:10]}_{str(period[1])[:10]}.png", 
+                        scale = 6, width = 3000, height = 1500)
+        pio.write_image(fig, directory + f"Alternative_test/{lag}/CS_{str(period[0])[:10]}_{str(period[1])[:10]}.svg", 
+                        scale = 6, width = 3000, height = 1500)
 
 #---------------------------------------------------------------------------------------------------------------------------------------
 
