@@ -184,7 +184,8 @@ def OLS_optimization(Y_val,
                      X_test,
                      p_value_bord:float = 0.05, 
                      log:bool = False,
-                     silent_results:bool = False):
+                     silent_results:bool = False,
+                     silent_scores:bool = False):
     
     """
     Function for the optimization of OLS
@@ -201,6 +202,8 @@ def OLS_optimization(Y_val,
         Whether to raise target and predictions data to the exponent before calculating RMSE
     silent_results : bool = False
         Whether to print whole stats of the regression
+    silent_scores : bool = False
+        Whether to print scores for validation and test
 
     Returns:
     ----------
@@ -244,8 +247,9 @@ def OLS_optimization(Y_val,
     else:
         val_rmse = mse(np.exp(Y_val_pred), np.exp(Y_val), squared = False)
         test_rmse = mse(np.exp(Y_test_pred), np.exp(Y_test), squared = False)
-    print('Validation score for the stacked model is: ', round(val_rmse, 3))
-    print('Test score for the stacked model is: ', round(test_rmse, 3))
+    if silent_scores == False:
+        print('Validation score for the stacked model is: ', round(val_rmse, 3))
+        print('Test score for the stacked model is: ', round(test_rmse, 3))
 
     return results, val_rmse, test_rmse, Y_val_pred, Y_test_pred
 
@@ -277,10 +281,13 @@ def OLS_benchmark(lag:int,
 
     # Load dataset for modelling
     data = pd.read_parquet(directory + 'Data_for_models/final_full.parquet').dropna(subset = [f'target_{lag}_week_fut'])
+    data_2008 = pd.read_parquet(directory + 'Data_for_models/final_CS.parquet').dropna(subset = [f'target_{lag}_week_fut'])
 
     # Split dataset on train, validation and test
     Y = data[f'target_{lag}_week_fut']
     X = sm.add_constant(data.drop(columns = data.columns[data.columns.str.contains('_week_fut')]))
+    Y_2008 = data_2008[f'target_{lag}_week_fut']
+    X_2008 = sm.add_constant(data_2008.drop(columns = data_2008.columns[data_2008.columns.str.contains('_week_fut')]))
     X_train, X_test, Y_train, Y_test = sk.model_selection.train_test_split(
         X, Y, test_size = test_size, random_state = random_state)
     X_train, X_val, Y_train, Y_val = sk.model_selection.train_test_split(
@@ -288,14 +295,20 @@ def OLS_benchmark(lag:int,
     
     # Train OLS to get scores
     print(f'\n OLS benchmark, {lag} lag:')
-    results, train_rmse, val_rmse, _, _ = OLS_optimization(Y_train, X_train, Y_val, X_val, log = log, silent_results = silent_results)
+    results, train_rmse, val_rmse, _, _ = OLS_optimization(Y_train, X_train, Y_val, X_val, log = log, 
+                                                           silent_results = silent_results,
+                                                           silent_scores = True)
+    
     if log == True:
         test_rmse = mse(np.exp(results.predict(X_test[list(results.params.index)])), np.exp(Y_test), squared = False)
+        rmse_2008 = mse(np.exp(results.predict(X_2008[list(results.params.index)])), np.exp(Y_2008), squared = False)
     else:
         test_rmse = mse(results.predict(X_test[list(results.params.index)]), Y_test, squared = False)
+        rmse_2008 = mse(results.predict(X_2008[list(results.params.index)]), Y_2008, squared = False)
     print(f'Train score for OLS benchmark is: ', round(train_rmse, 3))
     print(f'Validation score for OLS benchmark is: ', round(val_rmse, 3))
     print(f'Test score for OLS benchmark is: ', round(test_rmse, 3))
+    print(f'Test score for OLS benchmark on Case-Shiller data is: ', round(rmse_2008, 3))
 
 #---------------------------------------------------------------------------------------------------------------------------------------
 
