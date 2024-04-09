@@ -828,7 +828,7 @@ def target_pred_dist(lag:int,
         fig.update_layout(barmode = 'overlay',
                           showlegend = True,
                           font = dict(size = 30),
-                          title = 'Predictions vs Case-Shiller',
+                          title = f'{samples[key]} Predictions vs Target',
                           title_x = 0.5,
                           xaxis_title = 'Home price, $',
                           yaxis_title = 'Count',
@@ -839,6 +839,25 @@ def target_pred_dist(lag:int,
         # Save plots
         pio.write_image(fig, directory + f"Predictions/{lag}/{key}_dist.png", scale = 6, width = 3000, height = 1500)
         pio.write_image(fig, directory + f"Predictions/{lag}/{key}_dist.svg", scale = 6, width = 3000, height = 1500)
+
+        # Plot distributions of errors
+        fig = go.Figure()
+        if log == True:
+            fig.add_trace(go.Histogram(x = np.exp(data['orig']) - np.exp(data['stack']), name = f'{samples[key]} errors'))
+        else:
+            fig.add_trace(go.Histogram(x = data['orig'] - data['stack'], name = f'{samples[key]} errors'))
+        fig.update_layout(showlegend = True,
+                          font = dict(size = 30),
+                          title = f'{samples[key]} Errors ',
+                          title_x = 0.5,
+                          xaxis_title = 'Error, $',
+                          yaxis_title = 'Count',
+                          legend = dict(x = 0.8, y = 1, traceorder = 'normal'))
+        fig.update_layout()
+
+        # Save plots
+        pio.write_image(fig, directory + f"Predictions/{lag}/{key}_error_dist.png", scale = 6, width = 3000, height = 1500)
+        pio.write_image(fig, directory + f"Predictions/{lag}/{key}_error_dist.svg", scale = 6, width = 3000, height = 1500)
 
 #---------------------------------------------------------------------------------------------------------------------------------------
 
