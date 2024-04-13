@@ -1,3 +1,4 @@
+import os
 import time
 import shap
 import nolds
@@ -820,7 +821,7 @@ def target_pred_dist(lag:int,
         if log == True:
             data = np.exp(data)
 
-        # Print bucket analysis
+        # Print and save bucket analysis
         res_buckets = pd.DataFrame(columns = ['Lower', 'Upper', 'Number', 'RMSE', 'MAE'])
         buckets = np.linspace(data['orig'].min(), data['orig'].max(), 11)
         for i, bucket in enumerate(buckets[:-1]):
@@ -830,6 +831,11 @@ def target_pred_dist(lag:int,
                                                  mae(stack_bucket['orig'], stack_bucket['stack'])]
         print(f'\n {samples[key]} buckets, {lag} lag:')
         print(res_buckets)
+        if os.path.exists(directory + f'Predictions/{lag}/buckets.xlsx') == False:
+            res_buckets.to_excel(directory + f'Predictions/{lag}/buckets.xlsx', sheet_name = f'{key}')
+        else:
+            with pd.ExcelWriter(directory + f'Predictions/{lag}/buckets.xlsx', mode = 'a') as writer:
+                res_buckets.to_excel(writer, sheet_name = f'{key}')
 
         # Plot data distributions regarding if it was logged before
         fig = go.Figure()
