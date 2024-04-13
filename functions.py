@@ -822,7 +822,7 @@ def target_pred_dist(lag:int,
 
         # Print bucket analysis
         res_buckets = pd.DataFrame(columns = ['Lower', 'Upper', 'Number', 'RMSE', 'MAE'])
-        buckets = np.linspace(data['orig'].min(), data['orig'].max(), 10)
+        buckets = np.linspace(data['orig'].min(), data['orig'].max(), 11)
         for i, bucket in enumerate(buckets[:-1]):
             stack_bucket = data[data['orig'].between(bucket, buckets[i + 1])]
             res_buckets.loc[len(res_buckets)] = [bucket, buckets[i + 1], len(stack_bucket), 
