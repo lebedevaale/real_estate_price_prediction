@@ -19,6 +19,7 @@ from contextlib import contextmanager
 from plotly.subplots import make_subplots
 from statsmodels.tsa.stattools import adfuller
 from sklearn.metrics import mean_squared_error as mse
+from sklearn.metrics import mean_absolute_error as mae
 from sklearn.feature_selection import mutual_info_regression
 
 pio.templates.default = "plotly_white"
@@ -816,15 +817,24 @@ def target_pred_dist(lag:int,
     for key in samples.keys():
         # Import validation and test target and predictions
         data = pd.read_parquet(directory + f'Predictions/{lag}/gb_{key}.parquet')[['stack', 'orig']]
+        if log == True:
+            data = np.exp(data)
+
+        # Print bucket analysis
+        res_buckets = pd.DataFrame(columns = ['Lower', 'Upper', 'Number', 'RMSE', 'MAE'])
+        buckets = np.linspace(data['orig'].min(), data['orig'].max(), 10)
+        for i, bucket in enumerate(buckets[:-1]):
+            stack_bucket = data[data['orig'].between(bucket, buckets[i + 1])]
+            res_buckets.loc[len(res_buckets)] = [bucket, buckets[i + 1], len(stack_bucket), 
+                                                 mse(stack_bucket['orig'], stack_bucket['stack'], squared = False),
+                                                 mae(stack_bucket['orig'], stack_bucket['stack'])]
+        print(f'\n {samples[key]} buckets, {lag} lag:')
+        print(res_buckets)
 
         # Plot data distributions regarding if it was logged before
         fig = go.Figure()
-        if log == True:
-            fig.add_trace(go.Histogram(x = np.exp(data['orig']), name = f'{samples[key]} target'))
-            fig.add_trace(go.Histogram(x = np.exp(data['stack']), name = f'{samples[key]} stacked prediction'))
-        else:
-            fig.add_trace(go.Histogram(x = data['orig'], name = f'{samples[key]} target'))
-            fig.add_trace(go.Histogram(x = data['stack'], name = f'{samples[key]} stacked prediction'))
+        fig.add_trace(go.Histogram(x = data['orig'], name = f'{samples[key]} target'))
+        fig.add_trace(go.Histogram(x = data['stack'], name = f'{samples[key]} stacked prediction'))
         fig.update_layout(barmode = 'overlay',
                           showlegend = True,
                           font = dict(size = 30),
@@ -842,10 +852,7 @@ def target_pred_dist(lag:int,
 
         # Plot distributions of errors
         fig = go.Figure()
-        if log == True:
-            fig.add_trace(go.Histogram(x = np.exp(data['orig']) - np.exp(data['stack']), name = f'{samples[key]} errors'))
-        else:
-            fig.add_trace(go.Histogram(x = data['orig'] - data['stack'], name = f'{samples[key]} errors'))
+        fig.add_trace(go.Histogram(x = data['orig'] - data['stack'], name = f'{samples[key]} errors'))
         fig.update_layout(showlegend = True,
                           font = dict(size = 30),
                           title = f'{samples[key]} Errors for {lag} weeks',
