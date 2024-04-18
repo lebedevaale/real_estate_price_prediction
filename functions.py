@@ -1,3 +1,7 @@
+# LightGBM models were created with LightGBM==3.3.0, because releases after 4.0.0 dropped eraly stopping and eval from model params just for fun
+# However, ability to call hyperparams from it works only from 4.0.0. That's why for earlier versions it would return blank dicts
+# XGBoost models were created with XGBoost==1.6.2, because releases after 2.0.0 changed interface of choosing the best model
+
 import os
 import time
 import shap
@@ -1091,7 +1095,8 @@ def divide_signal(signal,
 def check_2008(lag:int,
                periods:list = None,
                directory:str = '', 
-               smooth:bool = True):
+               smooth:bool = True,
+               boosts:bool = True):
 
     """
     Function for the additional testing with Case-Shiller index
@@ -1106,6 +1111,8 @@ def check_2008(lag:int,
         Directory where data is stored if it isn't CWD
     smooth : bool = True
         Flag whether to smooth stacked prediction with FFT
+    boosts : bool = True
+        Flag whether to plot gbs
     
     Files:
     ----------
@@ -1193,9 +1200,10 @@ def check_2008(lag:int,
         if smooth == True:
             fig.add_trace(go.Scatter(x = preds_period.index, y = preds_period['smoothed'], mode = 'lines', name = 'Smoothed stacked prediction'))
         fig.add_trace(go.Scatter(x = preds_period.index, y = preds_period['stack'], mode = 'lines', name = 'Stacked prediction', opacity = 0.4))
-        fig.add_trace(go.Scatter(x = preds_period.index, y = preds_period['lgb'], mode = 'lines', name = 'LightGBM prediction', opacity = 0.2))
-        fig.add_trace(go.Scatter(x = preds_period.index, y = preds_period['xgb'], mode = 'lines', name = 'XGBoost prediction', opacity = 0.2))
-        fig.add_trace(go.Scatter(x = preds_period.index, y = preds_period['cat'], mode = 'lines', name = 'CatBoost prediction', opacity = 0.2))
+        if boosts == True:
+            fig.add_trace(go.Scatter(x = preds_period.index, y = preds_period['lgb'], mode = 'lines', name = 'LightGBM prediction', opacity = 0.2))
+            fig.add_trace(go.Scatter(x = preds_period.index, y = preds_period['xgb'], mode = 'lines', name = 'XGBoost prediction', opacity = 0.2))
+            fig.add_trace(go.Scatter(x = preds_period.index, y = preds_period['cat'], mode = 'lines', name = 'CatBoost prediction', opacity = 0.2))
         fig.update_layout(showlegend = True,
                         font = dict(size = 30),
                         title = 'Predictions vs Case-Shiller',
