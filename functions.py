@@ -145,6 +145,47 @@ def stationarity(data):
     
     return res
 
+#-------------------------------------------------------------------------------------------------------
+
+def states(statareas):
+
+    """
+    Inputs:
+    --------------------
+    statareas : array
+        Array with the list of statareas
+    
+    Returns:
+    --------------------
+    states_count_df : pd.DataFrame 
+        Dataframe with the number of state appearances
+    """
+
+    # Create dict to store state counts
+    states_count = dict()
+
+    # Function to update dict
+    def append_dict(state):
+        if state in states_count.keys():
+            states_count[state] += 1
+        else:
+            states_count[state] = 1
+
+    # Iterate over the statareas to extract number of appearances
+    for statarea in statareas:
+        if statarea.__contains__('-') == False:
+            append_dict(statarea)
+        else:
+            for state in statarea.split('-'):
+                append_dict(state)
+
+    # Create dataframe with state counts
+    states_count_df = pd.DataFrame({'State': states_count.keys(), 'Count': states_count.values()})
+    states_count_df = states_count_df.sort_values('Count', ascending = False).set_index('State', drop = True)
+
+    return states_count_df
+        
+
 #---------------------------------------------------------------------------------------------------------------------------------------
 
 def remove_most_insignificant(X_val, X_test, results):
