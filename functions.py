@@ -26,6 +26,7 @@ from statsmodels.tsa.stattools import adfuller
 from sklearn.metrics import mean_squared_error as mse
 from sklearn.metrics import mean_absolute_error as mae
 from sklearn.feature_selection import mutual_info_regression
+from sklearn.metrics import mean_absolute_percentage_error as mape
 
 pio.templates.default = "plotly_white"
 
@@ -317,6 +318,10 @@ def OLS_benchmark(lag:int,
         Directory where data is stored if it isn't CWD
     silent_results : bool = False
         Whether to print whole stats of the regression
+
+    Prints:
+    ----------
+    RMSE and MAPE for OLS benchmark samples
     """
 
     # Import val and test seize and log flag from config
@@ -346,16 +351,32 @@ def OLS_benchmark(lag:int,
                                                            silent_results = silent_results,
                                                            silent_scores = True)
     
+    # Calculate predictions and raise to exponent if needed
+    Y_val_pred = results.predict(X_val[list(results.params.index)])
+    Y_test_pred = results.predict(X_test[list(results.params.index)])
+    Y_2008_pred = results.predict(X_2008[list(results.params.index)])
     if log == True:
-        test_rmse = mse(np.exp(results.predict(X_test[list(results.params.index)])), np.exp(Y_test), squared = False)
-        rmse_2008 = mse(np.exp(results.predict(X_2008[list(results.params.index)])), np.exp(Y_2008), squared = False)
-    else:
-        test_rmse = mse(results.predict(X_test[list(results.params.index)]), Y_test, squared = False)
-        rmse_2008 = mse(results.predict(X_2008[list(results.params.index)]), Y_2008, squared = False)
-    print(f'Train score for OLS benchmark is: ', round(train_rmse, 3))
-    print(f'Validation score for OLS benchmark is: ', round(val_rmse, 3))
-    print(f'Test score for OLS benchmark is: ', round(test_rmse, 3))
-    print(f'Test score for OLS benchmark on Case-Shiller data is: ', round(rmse_2008, 3))
+        Y_val_pred = np.exp(Y_val_pred)
+        Y_val = np.exp(Y_val)
+        Y_test_pred = np.exp(Y_test_pred)
+        Y_test = np.exp(Y_test)
+        Y_2008_pred = np.exp(Y_2008_pred)
+        Y_2008 = np.exp(Y_2008)
+    
+    # Calculate metrics
+    val_mape = mape(Y_val_pred, Y_val) * 100
+    test_rmse = mse(Y_test_pred, Y_test, squared = False)
+    test_mape = mape(Y_test_pred, Y_test) * 100
+    rmse_2008 = mse(Y_2008_pred, Y_2008, squared = False)
+    mape_2008 = mape(Y_2008_pred, Y_2008) * 100
+
+    print(f'Train RMSE for OLS benchmark is: ', round(train_rmse, 3))
+    print(f'Validation RMSE for OLS benchmark is: ', round(val_rmse, 3))
+    print(f'Validation MAPE (%) for OLS benchmark is: ', round(val_mape, 3))
+    print(f'Test RMSE for OLS benchmark is: ', round(test_rmse, 3))
+    print(f'Test MAPE(%) for OLS benchmark is: ', round(test_mape, 3))
+    print(f'Test RMSE for OLS benchmark on Case-Shiller data is: ', round(rmse_2008, 3))
+    print(f'Test MAPE (%) for OLS benchmark on Case-Shiller data is: ', round(mape_2008, 3))
 
 #---------------------------------------------------------------------------------------------------------------------------------------
 
@@ -867,19 +888,20 @@ def target_pred_dist(lag:int,
             data = np.exp(data)
 
         # Print and save bucket analysis
-        res_buckets = pd.DataFrame(columns = ['Lower', 'Upper', 'Number', 'RMSE', 'MAE'])
+        res_buckets = pd.DataFrame(columns = ['Lower', 'Upper', 'Number', 'RMSE', 'MAE', 'MAPE (%)'])
         buckets = np.linspace(data['orig'].min(), data['orig'].max(), 11)
         for i, bucket in enumerate(buckets[:-1]):
             stack_bucket = data[data['orig'].between(bucket, buckets[i + 1])]
             res_buckets.loc[len(res_buckets)] = [bucket, buckets[i + 1], len(stack_bucket), 
                                                  mse(stack_bucket['orig'], stack_bucket['stack'], squared = False),
-                                                 mae(stack_bucket['orig'], stack_bucket['stack'])]
+                                                 mae(stack_bucket['orig'], stack_bucket['stack']),
+                                                 mape(stack_bucket['orig'], stack_bucket['stack']) * 100]
         print(f'\n {samples[key]} buckets, {lag} lag:')
         print(res_buckets)
         if os.path.exists(directory + f'Predictions/{lag}/buckets.xlsx') == False:
             res_buckets.to_excel(directory + f'Predictions/{lag}/buckets.xlsx', sheet_name = f'{key}')
         else:
-            with pd.ExcelWriter(directory + f'Predictions/{lag}/buckets.xlsx', mode = 'a') as writer:
+            with pd.ExcelWriter(directory + f'Predictions/{lag}/buckets.xlsx', mode = 'a', if_sheet_exists='replace') as writer:
                 res_buckets.to_excel(writer, sheet_name = f'{key}')
 
         # Plot data distributions regarding if it was logged before
@@ -1092,6 +1114,42 @@ def divide_signal(signal,
 
 #---------------------------------------------------------------------------------------------------------------------------------------
 
+def add_mape(lag:int,
+             directory:str = ''):
+    
+    """
+    Function for the additional calculation of MAPE for original data
+
+    Inputs:
+    ----------
+    lag : int
+        Distance of prediction in weeks
+    directory : str = ''
+        Directory where data is stored if it isn't CWD
+    
+    Prints:
+    ----------
+    MAPE for validation and test for all predicted columns
+    """
+
+    # Load validation and test data
+    stack_val = pd.read_parquet(directory + f'Predictions/{lag}/gb_val.parquet')
+    stack_test = pd.read_parquet(directory + f'Predictions/{lag}/gb_test.parquet')
+
+    # Create table with MAPE metrics
+    metrics = pd.DataFrame(columns = ['models', 'valid', 'test'])
+    for col in stack_val.columns:
+        if col != 'orig':
+            mape_val = round(mape(stack_val[col], stack_val['orig']) * 100, 3)
+            mape_test = round(mape(stack_test[col], stack_test['orig']) * 100, 3)
+            metrics.loc[len(metrics)] = [col, mape_val, mape_test]
+
+    # Print statistics
+    print(f'\n MAPE (%), {lag} lag:')
+    print(metrics)
+
+#---------------------------------------------------------------------------------------------------------------------------------------
+
 def check_2008(lag:int,
                periods:list = None,
                directory:str = '', 
@@ -1189,10 +1247,14 @@ def check_2008(lag:int,
         print('Final RMSE for Case-Shiller:', round(mse(preds_period['stack'], 
                                                         preds_period['orig'], 
                                                         squared = False), 3))
+        print('Final MAPE (%) for Case-Shiller:', round(mape(preds_period['stack'], 
+                                                             preds_period['orig']) * 100, 3))
         if smooth == True:
             print('Final RMSE for Case-Shiller with smoothed predictions is:', round(mse(preds_period['smoothed'], 
                                                                                          preds_period['orig'], 
                                                                                          squared = False), 3))
+            print('Final MAPE (%) for Case-Shiller with smoothed predictions is:', round(mape(preds_period['smoothed'], 
+                                                                                              preds_period['orig']) * 100, 3))
 
         # Create a plot of predictions vs target and save it
         fig = go.Figure()
